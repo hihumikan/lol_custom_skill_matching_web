@@ -1,0 +1,34 @@
+# Local development Dockerfile for Go backend
+
+# --- Build stage ---
+FROM golang:1.22-alpine AS builder
+WORKDIR /src
+
+RUN apk add --no-cache git
+
+# Cache go modules
+COPY backend/go.mod backend/go.sum ./backend/
+WORKDIR /src/backend
+RUN go mod download
+
+# Copy backend source
+COPY backend/. .
+
+# Build binary
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /out/server ./cmd/main.go
+
+# --- Runtime stage ---
+FROM alpine:3.20
+WORKDIR /app
+
+# Extras useful for local debugging
+RUN apk add --no-cache ca-certificates tzdata bash curl
+
+# Copy binary
+COPY --from=builder /out/server /usr/local/bin/server
+
+# Defaults for local usage (override at runtime as needed)
+ENV MATCH_LIMIT=10
+
+ENTRYPOINT ["/usr/local/bin/server"]
+
