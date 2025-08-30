@@ -230,8 +230,10 @@ func analyze(ctx context.Context, apiKey string, players []Player, matchLimit in
 
         championCount := map[int]int{}
         laneCount := map[string]int{}
+        laneChampCount := make(map[string]map[int]int) // lane -> champId -> count
         rankedCount := 0
         rankedWin := 0
+        puuidSet := make(map[string]struct{})
 
         // 3) details pass 1: count champs and lanes, track ranked matches
         for i := 0; i < matchLimit; i++ {
@@ -247,11 +249,14 @@ func analyze(ctx context.Context, apiKey string, players []Player, matchLimit in
             if detail.Info.QueueID == 1700 || detail.Info.QueueID == 490 || detail.Info.QueueID == 450 { continue }
             if detail.Info.QueueID != 400 && detail.Info.QueueID != 430 && detail.Info.QueueID != 420 { continue }
             for _, p := range detail.Info.Participants {
+                puuidSet[p.PUUID] = struct{}{}
                 if p.PUUID == account.PUUID {
                     championCount[p.ChampionID]++
                     lane := p.TeamPosition
                     if lane == "" { lane = "UNKNOWN" }
                     laneCount[lane]++
+                    if laneChampCount[lane] == nil { laneChampCount[lane] = make(map[int]int) }
+                    laneChampCount[lane][p.ChampionID]++
                     if detail.Info.QueueID == 420 { rankedCount++; if p.Win { rankedWin++ } }
                 }
             }
@@ -277,8 +282,8 @@ func analyze(ctx context.Context, apiKey string, players []Player, matchLimit in
         m2req.Header.Set("X-Riot-Token", apiKey)
         m2resp, err := doRequestWithRetry(m2req, client, limiter, 3)
         topMastery := 0
+        var masteries []struct{ ChampionID, ChampionLevel, ChampionPoints int }
         if err == nil && m2resp != nil && m2resp.StatusCode == 200 {
-            var masteries []struct{ ChampionID, ChampionLevel, ChampionPoints int }
             if err := json.NewDecoder(m2resp.Body).Decode(&masteries); err == nil {
                 sort.Slice(masteries, func(i, j int) bool { return masteries[i].ChampionPoints > masteries[j].ChampionPoints })
                 for i := 0; i < 3 && i < len(masteries); i++ { topMastery += masteries[i].ChampionPoints }
@@ -328,10 +333,54 @@ func analyze(ctx context.Context, apiKey string, players []Player, matchLimit in
             }
         }
 
-        // NOTE: For simplicity, avg match rank score omitted to limit API calls
+        // Average match rank score across participants of recent matches
+        totalScore, count := 0, 0
+        for puuid := range puuidSet {
+            rankUrl := fmt.Sprintf("https://jp1.api.riotgames.com/lol/league/v4/entries/by-puuid/%s", puuid)
+            rreq, _ := http.NewRequestWithContext(ctx, "GET", rankUrl, nil)
+            rreq.Header.Set("X-Riot-Token", apiKey)
+            rresp, err := doRequestWithRetry(rreq, client, limiter, 3)
+            if err != nil || rresp == nil || rresp.StatusCode != 200 { if rresp != nil { rresp.Body.Close() }; continue }
+            var rdata []struct{ QueueType, Tier, Rank string; LeaguePoints int }
+            if err := json.NewDecoder(rresp.Body).Decode(&rdata); err == nil {
+                for _, e := range rdata {
+                    if e.QueueType == "RANKED_SOLO_5x5" {
+                        totalScore += rankScore(e.Tier, e.Rank, e.LeaguePoints)
+                        count++
+                        break
+                    }
+                }
+            }
+            rresp.Body.Close()
+        }
         avgRankScore := 0
+        if count > 0 { avgRankScore = totalScore / count }
 
         skillScore := currentRankScore*2 + avgRankScore + topMastery/1000
+        // lane-specific sub champions (top by usage, then mastery)
+        getLaneChampions := func(lane string) []string {
+            champSet := make(map[string]struct{})
+            result := []string{}
+            type cs struct{ ID, Count int }
+            arr := []cs{}
+            for id, c := range laneChampCount[lane] { arr = append(arr, cs{id, c}) }
+            sort.Slice(arr, func(i, j int) bool { return arr[i].Count > arr[j].Count })
+            for i := 0; i < len(arr) && len(result) < 3; i++ {
+                if name := championIDToName[arr[i].ID]; name != "" { if _, ok := champSet[name]; !ok { result = append(result, name); champSet[name] = struct{}{} } }
+            }
+            if len(result) < 3 && len(masteries) > 0 {
+                sort.Slice(masteries, func(i, j int) bool { return masteries[i].ChampionPoints > masteries[j].ChampionPoints })
+                for i := 0; i < len(masteries) && len(result) < 3; i++ {
+                    if name := championIDToName[masteries[i].ChampionID]; name != "" { if _, ok := champSet[name]; !ok { result = append(result, name); champSet[name] = struct{}{} } }
+                }
+            }
+            return result
+        }
+        mainLaneChamps := map[string][]string{}
+        for _, lane := range mainLanes { mainLaneChamps[lane] = getLaneChampions(lane) }
+        subLaneChamps := map[string][]string{}
+        for _, lane := range subLanes { subLaneChamps[lane] = getLaneChampions(lane) }
+
         playerData := map[string]interface{}{
             "name":                  fmt.Sprintf("%s#%s", player.GameName, player.TagLine),
             "skill_score":           skillScore,
@@ -340,6 +389,8 @@ func analyze(ctx context.Context, apiKey string, players []Player, matchLimit in
             "main_lanes":            mainLanes,
             "main_sublanes":         subLanes,
             "main_champions":        mainChamps,
+            "main_lane_champions":   mainLaneChamps,
+            "sublane_champions":     subLaneChamps,
             "mastery_top3":          topMastery,
             "ranked_recent_count":   rankedCount,
             "ranked_recent_wins":    rankedWin,
@@ -356,6 +407,66 @@ func analyze(ctx context.Context, apiKey string, players []Player, matchLimit in
         if i%2 == 0 { teamA = append(teamA, p); sumA += p["skill_score"].(int) } else { teamB = append(teamB, p); sumB += p["skill_score"].(int) }
     }
     result := map[string]interface{}{"teamA": teamA, "teamB": teamB, "sumA": sumA, "sumB": sumB}
+
+    // lane-unique team split for 10 players (optional parity with CLI)
+    if len(allPlayerData) == 10 {
+        indices := []int{0,1,2,3,4,5,6,7,8,9}
+        minDiff := 1<<30
+        var bestA, bestB []int
+        var bestAroles, bestBroles []string
+        playerLanes := make([][]string, 10)
+        for i, p := range allPlayerData { if lanes, ok := p["main_lanes"].([]string); ok { playerLanes[i] = lanes } }
+        var comb func([]int, int, []int)
+        comb = func(arr []int, n int, acc []int) {
+            if len(acc) == 5 {
+                usedA, usedB := map[string]bool{}, map[string]bool{}
+                rolesA, rolesB := make([]string, 5), make([]string, 5)
+                okA, okB := true, true
+                for i, idx := range acc {
+                    found := false
+                    for _, lane := range playerLanes[idx] { if !usedA[lane] { usedA[lane] = true; rolesA[i] = lane; found = true; break } }
+                    if !found { okA = false; break }
+                }
+                bidx := 0
+                if okA {
+                    for _, idx := range arr {
+                        inA := false
+                        for _, a := range acc { if idx == a { inA = true; break } }
+                        if inA { continue }
+                        found := false
+                        for _, lane := range playerLanes[idx] { if !usedB[lane] { usedB[lane] = true; rolesB[bidx] = lane; found = true; break } }
+                        if !found { okB = false; break }
+                        bidx++
+                    }
+                }
+                if okA && okB {
+                    sA, sB := 0, 0
+                    for _, idx := range acc { sA += allPlayerData[idx]["skill_score"].(int) }
+                    for _, idx := range arr {
+                        inA := false
+                        for _, a := range acc { if idx == a { inA = true; break } }
+                        if !inA { sB += allPlayerData[idx]["skill_score"].(int) }
+                    }
+                    d := sA - sB; if d < 0 { d = -d }
+                    if d < minDiff { minDiff = d; bestA = append([]int{}, acc...); bestB = []int{}; for _, idx := range arr { inA := false; for _, a := range acc { if idx == a { inA = true; break } }; if !inA { bestB = append(bestB, idx) } }; bestAroles = append([]string{}, rolesA...); bestBroles = append([]string{}, rolesB...) }
+                }
+                return
+            }
+            if n == 0 { return }
+            if len(arr) == 0 { return }
+            comb(arr[1:], n-1, append(acc, arr[0]))
+            comb(arr[1:], n, acc)
+        }
+        comb(indices, 5, []int{})
+        if len(bestA) == 5 && len(bestB) == 5 {
+            type entry struct { Name string `json:"name"`; Role string `json:"role"`; Skill int `json:"skill"` }
+            outA, outB := []entry{}, []entry{}
+            sumRA, sumRB := 0, 0
+            for i, idx := range bestA { outA = append(outA, entry{ Name: allPlayerData[idx]["name"].(string), Role: bestAroles[i], Skill: allPlayerData[idx]["skill_score"].(int) }); sumRA += allPlayerData[idx]["skill_score"].(int) }
+            for i, idx := range bestB { outB = append(outB, entry{ Name: allPlayerData[idx]["name"].(string), Role: bestBroles[i], Skill: allPlayerData[idx]["skill_score"].(int) }); sumRB += allPlayerData[idx]["skill_score"].(int) }
+            result["lane_unique"] = map[string]interface{}{ "teamA": outA, "teamB": outB, "sumA": sumRA, "sumB": sumRB }
+        }
+    }
     return result, nil
 }
 
@@ -369,9 +480,60 @@ func withCORS(h http.Handler) http.Handler {
     })
 }
 
+// ---- Simple request logging middleware ----
+type ctxKey string
+
+const ctxReqID ctxKey = "reqID"
+
+type loggingResponseWriter struct {
+    http.ResponseWriter
+    status int
+    nbytes int
+}
+
+func (lw *loggingResponseWriter) WriteHeader(code int) {
+    lw.status = code
+    lw.ResponseWriter.WriteHeader(code)
+}
+func (lw *loggingResponseWriter) Write(b []byte) (int, error) {
+    if lw.status == 0 {
+        lw.status = http.StatusOK
+    }
+    n, err := lw.ResponseWriter.Write(b)
+    lw.nbytes += n
+    return n, err
+}
+
+func reqID() string { return fmt.Sprintf("%x", time.Now().UnixNano()) }
+
+func clientIP(r *http.Request) string {
+    if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+        return strings.Split(xff, ",")[0]
+    }
+    if xr := r.Header.Get("X-Real-IP"); xr != "" {
+        return xr
+    }
+    return r.RemoteAddr
+}
+
+func logRequests(next http.Handler) http.Handler {
+    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        id := reqID()
+        start := time.Now()
+        lw := &loggingResponseWriter{ResponseWriter: w}
+        ctx := context.WithValue(r.Context(), ctxReqID, id)
+        log.Printf("[req %s] %s %s from %s", id, r.Method, r.URL.Path, clientIP(r))
+        next.ServeHTTP(lw, r.WithContext(ctx))
+        dur := time.Since(start)
+        log.Printf("[req %s] done status=%d bytes=%d dur=%s", id, lw.status, lw.nbytes, dur)
+    })
+}
+
 func main() {
-    // Load env from backend/.env if present (local dev)
-    _ = godotenv.Load()
+    // Load env from .env (cwd=backend via Makefile). Fallback to backend/.env when executed from repo root.
+    if err := godotenv.Load(); err != nil {
+        _ = godotenv.Load("backend/.env")
+    }
 
     // Env
     apiKey := os.Getenv("RIOT_API_KEY")
@@ -383,16 +545,59 @@ func main() {
         if n, err := strconv.Atoi(ml); err == nil && n > 0 { matchLimit = n }
     }
 
+    // optional: log to file if LOG_FILE is set
+    if lf := os.Getenv("LOG_FILE"); lf != "" {
+        if f, err := os.OpenFile(lf, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644); err == nil {
+            log.Printf("logging to %s", lf)
+            log.SetOutput(f)
+        } else {
+            log.Printf("failed to open LOG_FILE=%s: %v", lf, err)
+        }
+    }
+
     mux := http.NewServeMux()
     mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK); _, _ = w.Write([]byte("ok")) })
     mux.HandleFunc("/analyze", func(w http.ResponseWriter, r *http.Request) {
         if r.Method != http.MethodPost { http.Error(w, "method not allowed", http.StatusMethodNotAllowed); return }
         var req analyzeRequest
         if err := json.NewDecoder(r.Body).Decode(&req); err != nil { http.Error(w, "invalid json", http.StatusBadRequest); return }
+        // freeze current reqID for logs
+        rid, _ := r.Context().Value(ctxReqID).(string)
         if req.MatchLimit > 0 { matchLimit = req.MatchLimit }
+        log.Printf("[req %s] analyze start players=%d matchLimit=%d", rid, len(req.Players), matchLimit)
         ctx := r.Context()
+        astart := time.Now()
         result, err := analyze(ctx, apiKey, req.Players, matchLimit)
-        if err != nil { http.Error(w, err.Error(), http.StatusBadRequest); return }
+        if err != nil {
+            log.Printf("[req %s] analyze error: %v", rid, err)
+            http.Error(w, err.Error(), http.StatusBadRequest); return
+        }
+        // also write result to file for traceability
+        resultFile := os.Getenv("RESULT_FILE")
+        if resultFile == "" { resultFile = "team_result.json" }
+        if b, mErr := json.MarshalIndent(result, "", "  "); mErr == nil {
+            if wErr := os.WriteFile(resultFile, b, 0644); wErr != nil {
+                log.Printf("[req %s] failed to write result file (%s): %v", rid, resultFile, wErr)
+            } else {
+                log.Printf("[req %s] wrote result to %s", rid, resultFile)
+            }
+        } else {
+            log.Printf("[req %s] marshal result failed: %v", rid, mErr)
+        }
+        dur := time.Since(astart)
+        // attach simple meta for progress/diagnostics
+        if m, ok := result["meta"].(map[string]interface{}); ok {
+            m["duration_ms"] = dur.Milliseconds()
+            m["players"] = len(req.Players)
+            m["match_limit"] = matchLimit
+        } else {
+            result["meta"] = map[string]interface{}{
+                "duration_ms": dur.Milliseconds(),
+                "players": len(req.Players),
+                "match_limit": matchLimit,
+            }
+        }
+        log.Printf("[req %s] analyze done in %s", rid, dur)
         w.Header().Set("Content-Type", "application/json")
         json.NewEncoder(w).Encode(result)
     })
@@ -401,5 +606,5 @@ func main() {
     if port == "" { port = "8080" }
     addr := ":" + port
     log.Printf("Web API listening on %s", addr)
-    if err := http.ListenAndServe(addr, withCORS(mux)); err != nil { log.Fatal(err) }
+    if err := http.ListenAndServe(addr, logRequests(withCORS(mux))); err != nil { log.Fatal(err) }
 }

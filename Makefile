@@ -122,34 +122,34 @@ docker-run: docker-run-local
 
 # Build local dev image
 docker-build-local:
-    @echo "[docker] Building LOCAL image: $(IMAGE_LOCAL) ..."
-    @docker build -f Dockerfile.local -t $(IMAGE_LOCAL) .
+	@echo "[docker] Building LOCAL image: $(IMAGE_LOCAL) ..."
+	@docker build -f Dockerfile.local -t $(IMAGE_LOCAL) .
 
 # Build release image (public)
 docker-build-release:
-    @echo "[docker] Building RELEASE image: $(IMAGE_RELEASE) ..."
-    @docker build -f Dockerfile -t $(IMAGE_RELEASE) .
+	@echo "[docker] Building RELEASE image: $(IMAGE_RELEASE) ..."
+	@docker build -f Dockerfile -t $(IMAGE_RELEASE) .
 
 # Runs with envs from backend/.env, mounts backend/ as working /data
 # Output files (e.g., team_result.json) will appear under backend/
 # Run LOCAL image with mounted backend folder
 docker-run-local:
-    @echo "[docker] Running LOCAL $(IMAGE_LOCAL) ..."
-    @docker run --rm \
-        --name lol-skill-backend \
-        --env-file backend/.env \
-        -e PLAYERS_FILE=/data/players.json \
-        -v $(PWD)/backend:/data \
-        -w /data \
-        $(IMAGE_LOCAL)
+	@echo "[docker] Running LOCAL $(IMAGE_LOCAL) ..."
+	@docker run --rm \
+		--name lol-skill-backend \
+		--env-file backend/.env \
+		-e PLAYERS_FILE=/data/players.json \
+		-v $(PWD)/backend:/data \
+		-w /data \
+		$(IMAGE_LOCAL)
 
 # Run RELEASE image (built locally or pulled)
 docker-run-release:
-    @echo "[docker] Running RELEASE $(IMAGE_RELEASE) ..."
-    @docker run --rm \
-        --name lol-skill-backend \
-        --env-file backend/.env \
-        -e PLAYERS_FILE=/data/players.json \
-        -v $(PWD)/backend:/data \
-        -w /data \
-        $(IMAGE_RELEASE)
+	@echo "[docker] Running RELEASE $(IMAGE_RELEASE) ..."
+	@docker run --rm \
+		--name lol-skill-backend \
+		--env-file backend/.env \
+		-e PLAYERS_FILE=/data/players.json \
+		-v $(PWD)/backend:/data \
+		-w /data \
+		$(IMAGE_RELEASE)
