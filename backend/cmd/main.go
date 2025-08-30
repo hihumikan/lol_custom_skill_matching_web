@@ -1,8 +1,7 @@
 package main
 
 import (
-	"bytes"
-	"encoding/json"
+    "encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -1075,30 +1074,7 @@ AFTER_ASYNC:
 	}
 	fmt.Println("\nチーム分け結果を team_result.json に出力しました")
 
-	// --- Discord Webhook通知 ---
-	webhookURL := ""
-	// チーム分け結果をテキストで整形
-	msg := "【チーム分け結果】\n"
-	msg += fmt.Sprintf("Aチーム（合計スキル: %d）\n", sumA)
-	for _, p := range teamA {
-		msg += fmt.Sprintf("  %s スキル:%d メインレーン:%v\n", p["name"], p["skill_score"], p["main_lanes"])
-	}
-	msg += fmt.Sprintf("Bチーム（合計スキル: %d）\n", sumB)
-	for _, p := range teamB {
-		msg += fmt.Sprintf("  %s スキル:%d メインレーン:%v\n", p["name"], p["skill_score"], p["main_lanes"])
-	}
-	// Discord Webhookの形式に整形
-	payload := map[string]string{"content": msg}
-	payloadBytes, _ := json.Marshal(payload)
-	resp, err := http.Post(webhookURL, "application/json", bytes.NewBuffer(payloadBytes))
-	if err != nil {
-		log.Printf("Discord Webhook送信失敗: %v", err)
-	} else {
-		defer resp.Body.Close()
-		if resp.StatusCode != 204 && resp.StatusCode != 200 {
-			log.Printf("Discord Webhook送信失敗: %s", resp.Status)
-		}
-	}
+    // Discord Webhook 通知は無効化（要求により削除）
 
 	// --- レーン被りなしチーム分けロジック（5人vs5人専用） ---
 	if len(allPlayerData) == 10 {
@@ -1216,8 +1192,12 @@ AFTER_ASYNC:
 			if n == 0 {
 				return
 			}
-			comb(arr[1:], n-1, append(acc, arr[0]))
-			comb(arr[1:], n, acc)
+        // 配列が空のときはこれ以上選べないので打ち切り
+        if len(arr) == 0 {
+            return
+        }
+        comb(arr[1:], n-1, append(acc, arr[0]))
+        comb(arr[1:], n, acc)
 		}
 		comb(indices, 5, []int{})
 		if len(bestA) == 5 && len(bestB) == 5 {
