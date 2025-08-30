@@ -10,12 +10,14 @@ type AnalyzeResponse = {
   sumB: number
 }
 
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8080'
+const DEFAULT_API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8080'
+const CLOUD_API_BASE: string | undefined = import.meta.env.VITE_API_CLOUD_BASE
 const MAX_PLAYERS = 10
 
 function App() {
   const [players, setPlayers] = useState<Player[]>([])
   const [matchLimit, setMatchLimit] = useState<number>(10)
+  const [apiBase, setApiBase] = useState<string>(DEFAULT_API_BASE)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<AnalyzeResponse | null>(null)
@@ -27,14 +29,14 @@ function App() {
 
   const removePlayer = (idx: number) => setPlayers(prev => prev.filter((_, i) => i !== idx))
 
-  const submit = async () => {
+  const submit = async (base: string) => {
     setLoading(true)
     setError(null)
     setInfo(null)
     setResult(null)
     try {
       const body = { players, matchLimit }
-      const res = await fetch(`${API_BASE}/analyze`, {
+      const res = await fetch(`${base}/analyze`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -133,6 +135,16 @@ function App() {
           onChange={(e) => setMatchLimit(parseInt(e.target.value || '0'))}
         />
       </div>
+      <div style={{ marginBottom: 12 }}>
+        <label>API URL（上書き可）: </label>
+        <input
+          type="text"
+          value={apiBase}
+          onChange={(e) => setApiBase(e.target.value)}
+          style={{ width: '60%' }}
+        />
+        <button style={{ marginLeft: 8 }} onClick={() => setApiBase(DEFAULT_API_BASE)}>リセット</button>
+      </div>
       <div style={{ marginBottom: 8 }}>登録人数: {players.length}/{MAX_PLAYERS}</div>
       <div style={{ marginBottom: 12 }}>
         <label>ロビーのログを貼り付け → 「登録」を押す:</label>
@@ -177,7 +189,16 @@ function App() {
       )}
 
       <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-        <button onClick={submit} disabled={!canSubmit}>{loading ? '解析中...' : '解析'}</button>
+        <button onClick={() => submit(apiBase)} disabled={!canSubmit}>
+          {loading ? '解析中...' : 'このURLで解析'}
+        </button>
+        <button
+          onClick={() => CLOUD_API_BASE && submit(CLOUD_API_BASE)}
+          disabled={!canSubmit || !CLOUD_API_BASE}
+          title={CLOUD_API_BASE ? 'クラウド環境で解析します' : 'クラウドURLが設定されていません'}
+        >
+          クラウドで解析
+        </button>
       </div>
       {error && <div style={{ color: 'red' }}>{error}</div>}
       {info && <div style={{ color: 'green' }}>{info}</div>}

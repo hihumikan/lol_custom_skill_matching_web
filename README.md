@@ -115,7 +115,8 @@ make back-run-app
 make front-dev
 ```
 
-- API のエンドポイントは `VITE_API_BASE` で変更可能（未設定時は `http://localhost:8080`）。
+- API のエンドポイントは画面の「API URL」で上書き可能（初期値は `VITE_API_BASE`。未設定時は `http://localhost:8080`）。
+- 別途「クラウドで解析」ボタンを用意（`VITE_API_CLOUD_BASE` に固定。UIにはURLを表示しません）。
 - ログ貼り付け → 「登録」: 形式例「名前#タグがロビーに参加しました」。日本語タグにも対応。
 - 登録 UI:
   - 最大 10 人まで追加。登録済みは読み取り専用の行表示（削除可）。
@@ -150,8 +151,13 @@ docker run --rm \
   -e PLAYERS_FILE=/data/players.json \
   -v $(pwd)/backend:/data \
   -w /data \
-  ghcr.io/<owner>/<repo>:latest
+ghcr.io/<owner>/<repo>:latest
 ```
+
+
+## フロントの環境変数
+- `VITE_API_BASE`: 既定のAPI URL（画面の「API URL」初期値）。例: `http://localhost:8080`
+- `VITE_API_CLOUD_BASE`: 「クラウドで解析」ボタンが使用する固定URL（UIには非表示）。
 
 
 
