@@ -1,9 +1,10 @@
 # Project Makefile for lol_custom_skill_matching
 
+
 .PHONY: help setup clean \
 	front-install front-dev front-build front-preview front-lint \
-	back-download back-run back-build back-test \
-	dev
+	back-download back-run back-run-app back-build back-test \
+	dev dev-app
 
 # Detect package manager: prefer pnpm, fallback to npm
 PKG_MANAGER := $(shell if command -v pnpm >/dev/null 2>&1; then echo pnpm; elif command -v npm >/dev/null 2>&1; then echo npm; else echo none; fi)
@@ -28,6 +29,10 @@ setup: front-install back-download
 dev:
 	@echo "Starting backend and frontend..."
 	@$(MAKE) -j2 back-run front-dev
+
+dev-app:
+	@echo "Starting API backend and frontend..."
+	@$(MAKE) -j2 back-run-app front-dev
 
 # ---------- Frontend ----------
 front-install:
@@ -85,6 +90,11 @@ back-download:
 back-run:
 	@echo "[backend] running (env from backend/.env via godotenv)..."
 	@cd backend && go run ./cmd/main.go
+
+# Run backend Web API server (app)
+back-run-app:
+	@echo "[backend] running Web API (requires RIOT_API_KEY env) ..."
+	@cd backend && go run ./cmd/app
 
 back-build:
 	@echo "[backend] building to backend/bin/server..."
