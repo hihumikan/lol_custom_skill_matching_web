@@ -72,14 +72,14 @@ func scoreToRank(score int) (string, string, int) {
 }
 
 type Account struct {
-    PUUID    string `json:"puuid"`
-    GameName string `json:"gameName"`
-    TagLine  string `json:"tagLine"`
+	PUUID    string `json:"puuid"`
+	GameName string `json:"gameName"`
+	TagLine  string `json:"tagLine"`
 }
 
 type Player struct {
-    GameName string `json:"gameName"`
-    TagLine  string `json:"tagLine"`
+	GameName string `json:"gameName"`
+	TagLine  string `json:"tagLine"`
 }
 
 // -------- レートリミット/進捗管理 --------
@@ -319,22 +319,22 @@ func main() {
 		log.Fatal("RIOT_API_KEYが設定されていません")
 	}
 
-    // 複数プレイヤー対応: プレイヤー名リストをJSONから読み込み
-    playersPath := os.Getenv("PLAYERS_FILE")
-    if playersPath == "" {
-        playersPath = "players.json" // backend直下を想定
-    }
-    var players []Player
-    if b, err := os.ReadFile(playersPath); err != nil {
-        log.Fatalf("プレイヤーリストJSON読込失敗 (%s): %v", playersPath, err)
-    } else {
-        if err := json.Unmarshal(b, &players); err != nil {
-            log.Fatalf("プレイヤーリストJSONパース失敗 (%s): %v", playersPath, err)
-        }
-    }
-    if len(players) == 0 {
-        log.Fatalf("プレイヤーリストが空です (%s)" , playersPath)
-    }
+	// 複数プレイヤー対応: プレイヤー名リストをJSONから読み込み
+	playersPath := os.Getenv("PLAYERS_FILE")
+	if playersPath == "" {
+		playersPath = "players.json" // backend直下を想定
+	}
+	var players []Player
+	if b, err := os.ReadFile(playersPath); err != nil {
+		log.Fatalf("プレイヤーリストJSON読込失敗 (%s): %v", playersPath, err)
+	} else {
+		if err := json.Unmarshal(b, &players); err != nil {
+			log.Fatalf("プレイヤーリストJSONパース失敗 (%s): %v", playersPath, err)
+		}
+	}
+	if len(players) == 0 {
+		log.Fatalf("プレイヤーリストが空です (%s)", playersPath)
+	}
 
 	// レートリミット/進捗管理の初期化
 	limiter := NewRiotLimiter()
