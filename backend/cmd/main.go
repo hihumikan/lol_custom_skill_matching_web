@@ -1,14 +1,15 @@
 package main
 
 import (
-	"bytes"
-	"encoding/json"
-	"fmt"
-	"log"
-	"net/http"
-	"os"
-	"sort"
-	"time"
+    "bytes"
+    "encoding/json"
+    "fmt"
+    "log"
+    "net/http"
+    "os"
+    "strconv"
+    "sort"
+    "time"
 
 	"github.com/joho/godotenv"
 )
@@ -197,12 +198,17 @@ func main() {
 		}
 
 		// 3. 各マッチIDから詳細を取得し、使ったチャンピオンを集計
-		championCount := make(map[int]int)
-		laneCount := make(map[string]int) // レーン集計用
-		maxMatches := 10                  // 10試合分集計
-		if len(matchIDs) < maxMatches {
-			maxMatches = len(matchIDs)
-		}
+        championCount := make(map[int]int)
+        laneCount := make(map[string]int) // レーン集計用
+        maxMatches := 10                  // デフォルト: 10試合分集計
+        if ml := os.Getenv("MATCH_LIMIT"); ml != "" {
+            if n, err := strconv.Atoi(ml); err == nil && n > 0 {
+                maxMatches = n
+            }
+        }
+        if len(matchIDs) < maxMatches {
+            maxMatches = len(matchIDs)
+        }
 		// ランク戦回数・勝利数
 		rankedCount := 0
 		rankedWin := 0
@@ -423,12 +429,17 @@ func main() {
 		}
 
 		// --- 平均マッチランク計算 ---
-		fmt.Println("\n直近10試合の平均マッチランク計算中...")
-		puuidSet := make(map[string]struct{})
-		maxMatches = 10 // 10試合分のみ集計
-		if len(matchIDs) < maxMatches {
-			maxMatches = len(matchIDs)
-		}
+        fmt.Println("\n直近試合の平均マッチランク計算中...")
+        puuidSet := make(map[string]struct{})
+        maxMatches = 10 // デフォルト: 10試合分のみ集計
+        if ml := os.Getenv("MATCH_LIMIT"); ml != "" {
+            if n, err := strconv.Atoi(ml); err == nil && n > 0 {
+                maxMatches = n
+            }
+        }
+        if len(matchIDs) < maxMatches {
+            maxMatches = len(matchIDs)
+        }
 		for i := 0; i < maxMatches; i++ {
 			matchID := matchIDs[i]
 			matchDetailUrl := fmt.Sprintf("https://asia.api.riotgames.com/lol/match/v5/matches/%s", matchID)
