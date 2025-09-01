@@ -38,6 +38,17 @@ challenge metrics lets the model rate strong smurf accounts appropriately.
 5. Predict skills for the current participants and call `balance_teams` to
    obtain two teams with minimal skill difference.
 
+## Label options
+The regression model requires a numeric target representing true skill. Possible
+choices include:
+
+- Converting the player's current rank (tier, division, LP) into an approximate
+  MMR value.
+- Computing a win-contribution score from past match outcomes.
+
+Rank alone is noisy, so incorporating historical performance tends to yield more
+reliable labels.
+
 ## Training pipeline overview
 1. **Data collection** – batch Riot API calls to accumulate large amounts of
    player data.
