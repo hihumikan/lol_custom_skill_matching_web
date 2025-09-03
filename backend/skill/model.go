@@ -1,6 +1,7 @@
-package skill
+package main
 
 import (
+	"fmt"
 	"math"
 	"sort"
 )
@@ -162,4 +163,19 @@ func BalanceTeams(players []PlayerFeatures, model *SkillModel) ([]PlayerFeatures
 		}
 	}
 	return teamA, teamB
+}
+
+func main() {
+	// Sample players and labels for demonstration purposes
+	players := []PlayerFeatures{
+		{Tier: 4, Rank: 1, LP: 50, WinRate: 0.55, SummonerLevel: 100, AvgKDA: 3.0, CSPerMin: 6.5, GoldPerMin: 350, VisionPerMin: 1.2, DamagePerMin: 500, KillParticipation: 0.6, TeamDamagePct: 0.25, ObjectiveRate: 0.05, TakedownsFirst25: 5, SoloKills: 1},
+		{Tier: 3, Rank: 2, LP: 20, WinRate: 0.52, SummonerLevel: 80, AvgKDA: 2.5, CSPerMin: 5.8, GoldPerMin: 320, VisionPerMin: 0.9, DamagePerMin: 400, KillParticipation: 0.55, TeamDamagePct: 0.20, ObjectiveRate: 0.03, TakedownsFirst25: 4, SoloKills: 0.5},
+		{Tier: 2, Rank: 1, LP: 40, WinRate: 0.50, SummonerLevel: 70, AvgKDA: 2.0, CSPerMin: 5.5, GoldPerMin: 310, VisionPerMin: 0.8, DamagePerMin: 380, KillParticipation: 0.50, TeamDamagePct: 0.18, ObjectiveRate: 0.02, TakedownsFirst25: 3, SoloKills: 0.3},
+		{Tier: 1, Rank: 4, LP: 10, WinRate: 0.48, SummonerLevel: 60, AvgKDA: 1.8, CSPerMin: 5.0, GoldPerMin: 300, VisionPerMin: 0.7, DamagePerMin: 360, KillParticipation: 0.45, TeamDamagePct: 0.15, ObjectiveRate: 0.01, TakedownsFirst25: 2, SoloKills: 0.2},
+	}
+	labels := []float64{1500, 1300, 1200, 1000}
+	model := TrainLinear(players, labels)
+	teamA, teamB := BalanceTeams(players, model)
+	fmt.Println("Team A:", teamA)
+	fmt.Println("Team B:", teamB)
 }
