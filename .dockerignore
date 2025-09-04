@@ -1,9 +1,0 @@
-.git
-.gitignore
-**/.DS_Store
-front/node_modules
-front/dist
-backend/bin
-backend/team_result.json
-backend/players.json
-**/*.log
